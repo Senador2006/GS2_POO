@@ -67,21 +67,21 @@ a saída preventiva (CRÍTICO).
 
 ## Padrões criacionais
 
-**Factory (`FabricaPrevisao`).** Escolher a estratégia de previsão é a única decisão do sistema do tipo "qual classe
+**Factory (**`FabricaPrevisao`**).** Escolher a estratégia de previsão é a única decisão do sistema do tipo "qual classe
 instanciar". Sem a fábrica, o serviço teria `if (tipo == MEDIA_MOVEL) new ... else ...` e precisaria conhecer os
 parâmetros de cada estratégia (janela de 5? de 3?). A fábrica guarda um `EnumMap<TipoEstrategia, Supplier<...>>` com a
 "receita" de cada uma: o serviço só pede `criar(tipo)` ou `criarTodas()`, sem `if`, `switch` nem `instanceof`, e uma
 estratégia nova entra com uma linha no construtor da fábrica. Não usamos Factory para `Medicao` ou `Alerta` porque
 eles têm um único tipo e o construtor já valida tudo: ali a fábrica seria só uma camada a mais.
 
-**Singleton (`ConfiguracaoSistema`).** Os limiares precisam ser **os mesmos** para quem emite o alerta (serviço), quem
+**Singleton (**`ConfiguracaoSistema`**).** Os limiares precisam ser **os mesmos** para quem emite o alerta (serviço), quem
 os mostra (menu, opção 5) e quem os altera (opção 4). Duas instâncias poderiam comparar previsões com limiares
 diferentes sem ninguém perceber. O construtor é privado, a instância sai de `getInstancia()` e o Spring a recebe por
 `BeansConfig`, sem criar um segundo objeto escondido. O custo do Singleton é o estado global: por isso os testes chamam
 `restaurarPadroes()` antes de cada caso. Não usamos Singleton nos repositories ou no serviço porque o Spring já garante
 uma instância deles e eles não guardam estado próprio.
 
-**Builder (`RelatorioBuilder`).** O relatório da opção 5 tem várias seções opcionais (território, pontos, limiares,
+**Builder (**`RelatorioBuilder`**).** O relatório da opção 5 tem várias seções opcionais (território, pontos, limiares,
 totais do banco, últimos alertas). Um construtor com todas elas como parâmetro seria ilegível e obrigaria a passar
 `null` no que não se quer mostrar. Com o builder, quem chama encadeia só as seções que quer
 (`.comTerritorio(...).comLimiares(...).construir()`), na ordem que quer, e a formatação fica fora do menu.
@@ -113,19 +113,18 @@ responsável, que pode confirmar, adiar ou descartar com base no que vê no terr
 
 ## Uso de IA
 
-Usamos IA (assistente do Cursor) para gerar a base do projeto (estrutura de pacotes, classes de domínio, serviço,
-menu, testes e a documentação em `docs/`) e, depois, para implementar as melhorias listadas nas pendências:
-persistência dos limiares, filtro de alertas repetidos, `RelatorioBuilder`, exportação em CSV, simulação de chuva em
-episódios, teste de integração com `@DataJpaTest` e configuração do Mockito no `pom.xml`. Também usamos a IA como
-ponto de partida para estas seções do README.
+Utilizamos a IA principalmente na estruturação base da arquitetura e como revisão de codigo, para a projeção arquitetural e analise de requisitos usamos o Claude Code no modelo Opus 5.5 Medium.
+
+Para revisão e correção de codigo, utilizamos o cursor para verificar e analisar possiveis erros de clean code cometidos.  
+
 
 Como revisamos:
 
 * Rodamos `.\mvnw.cmd test` (30 testes) e conferimos que cada teste testa o que o nome diz.
 * Executamos o menu de ponta a ponta numa cópia limpa do projeto: leituras, previsões, alerta repetido, exportação
-  CSV, código de acesso errado, alteração de limiar e reinício do programa com os dados preservados.
+CSV, código de acesso errado, alteração de limiar e reinício do programa com os dados preservados.
 * Lemos cada classe e conferimos se as regras implementadas batem com as de `docs/regras-de-negocio.md`
-  (faixas, limiares, mínimo de leituras, quando alertar).
+(faixas, limiares, mínimo de leituras, quando alertar).
 * Ajustamos o texto das decisões e da reflexão ao que a equipe de fato pensa sobre o problema.
 
 ## Divisão de tarefas
