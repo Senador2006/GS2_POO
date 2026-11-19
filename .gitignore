@@ -30,3 +30,5 @@ bin/
 ### Exportações e logs ###
 *.log
 exportacoes/
+
+docs/
