@@ -12,14 +12,18 @@ import br.com.fiap.territory.excecao.DadosInvalidosException;
 import br.com.fiap.territory.excecao.FonteIndisponivelException;
 import br.com.fiap.territory.servico.AnalisePrevisao;
 import br.com.fiap.territory.servico.CatalogoTerritorio;
+import br.com.fiap.territory.servico.ExportadorCsv;
+import br.com.fiap.territory.servico.RelatorioBuilder;
 import br.com.fiap.territory.servico.ServicoMonitoramento;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.dao.DataAccessException;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.Scanner;
 
 /**
@@ -30,13 +34,18 @@ import java.util.Scanner;
 @SpringBootApplication
 public class SistemaMonitoramento implements CommandLineRunner {
 
+    private static final DateTimeFormatter FORMATO_DATA = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+
     private final ServicoMonitoramento servico;
     private final CatalogoTerritorio catalogo;
+    private final ExportadorCsv exportadorCsv;
     private final Scanner entrada = new Scanner(System.in);
 
-    public SistemaMonitoramento(ServicoMonitoramento servico, CatalogoTerritorio catalogo) {
+    public SistemaMonitoramento(ServicoMonitoramento servico, CatalogoTerritorio catalogo,
+                                ExportadorCsv exportadorCsv) {
         this.servico = servico;
         this.catalogo = catalogo;
+        this.exportadorCsv = exportadorCsv;
     }
 
     public static void main(String[] args) {
@@ -47,6 +56,7 @@ public class SistemaMonitoramento implements CommandLineRunner {
     public void run(String... args) {
         System.out.println("=== Territory Predictive Insights - chuva e risco de alagamento ===");
         System.out.println("Território: " + catalogo.getDadosTerritorio());
+        carregarLimiaresSalvos();
         int opcao;
         do {
             exibirMenu();
@@ -67,11 +77,22 @@ public class SistemaMonitoramento implements CommandLineRunner {
         } while (opcao != 0);
     }
 
+    private void carregarLimiaresSalvos() {
+        try {
+            int personalizados = servico.carregarLimiaresSalvos();
+            if (personalizados > 0) {
+                System.out.println(personalizados + " limiar(es) alterado(s) em execuções anteriores carregado(s) do banco.");
+            }
+        } catch (DadosInvalidosException e) {
+            System.out.println("Limiares gravados no banco ignorados (" + e.getMessage() + "). Usando os valores padrão.");
+        }
+    }
+
     private void exibirMenu() {
         System.out.println();
         System.out.println("1 - Verificar sensores (ler e gravar medições)");
         System.out.println("2 - Rodar previsões e alertas");
-        System.out.println("3 - Ver histórico (medições por sensor / alertas emitidos)");
+        System.out.println("3 - Ver histórico (medições por sensor / alertas emitidos / exportar CSV)");
         System.out.println("4 - Gerenciar dados do território");
         System.out.println("5 - Status completo");
         System.out.println("0 - Sair");
@@ -100,40 +121,56 @@ public class SistemaMonitoramento implements CommandLineRunner {
 
     // ------------------------------------------------------------------ 2
     private void rodarPrevisoes() {
-        int alertas = 0;
+        int novos = 0;
+        int repetidos = 0;
         for (Sensor sensor : catalogo.getTodosSensores()) {
             System.out.println("\nSensor " + sensor.getCodigo() + " (" + sensor.getTipo().getDescricao() + ")");
             for (AnalisePrevisao analise : servico.analisarComTodasEstrategias(sensor)) {
                 ResultadoPrevisao r = analise.resultado();
                 System.out.println("  - " + r.estrategia() + ": " + r.significado());
-                if (analise.alertaEmitido().isPresent()) {
+                if (analise.alertaEmitido().isEmpty()) {
+                    continue;
+                }
+                if (analise.alertaRepetido()) {
+                    System.out.println("    >> (mantido: já emitido em " + analise.alerta().getDataHora().format(FORMATO_DATA)
+                            + ", sem leituras novas desde então) " + analise.alerta().explicar());
+                    repetidos++;
+                } else {
                     System.out.println("    >> " + analise.alerta().explicar());
-                    alertas++;
+                    novos++;
                 }
             }
         }
-        System.out.println("\n" + alertas + " alerta(s) emitido(s) e gravado(s).");
+        System.out.println("\n" + novos + " alerta(s) novo(s) emitido(s) e gravado(s).");
+        if (repetidos > 0) {
+            System.out.println(repetidos + " alerta(s) mantido(s) sem gravar de novo. Use a opção 1 para obter leituras novas.");
+        }
     }
 
     // ------------------------------------------------------------------ 3
     private void verHistorico() {
         System.out.println("1 - Medições de um sensor");
         System.out.println("2 - Alertas já emitidos");
+        System.out.println("3 - Exportar medições de um sensor em CSV");
         int opcao = lerInteiro("Opção: ");
         switch (opcao) {
             case 1 -> listarMedicoesDeSensor();
             case 2 -> listarAlertas();
+            case 3 -> exportarMedicoesEmCsv();
             default -> System.out.println("Opção inválida.");
         }
     }
 
-    private void listarMedicoesDeSensor() {
+    private Sensor escolherSensor() throws FonteIndisponivelException {
         System.out.print("Sensores: ");
         catalogo.getTodosSensores().forEach(s -> System.out.print(s.getCodigo() + "  "));
         System.out.println();
-        String codigo = lerTexto("Código do sensor: ");
+        return catalogo.buscarSensor(lerTexto("Código do sensor: "));
+    }
+
+    private void listarMedicoesDeSensor() {
         try {
-            Sensor sensor = catalogo.buscarSensor(codigo);
+            Sensor sensor = escolherSensor();
             List<Medicao> historico = servico.buscarHistoricoPorSensor(sensor.getCodigo());
             if (historico.isEmpty()) {
                 System.out.println("Nenhuma medição gravada para " + sensor.getCodigo() + ". Use a opção 1 antes.");
@@ -143,6 +180,21 @@ public class SistemaMonitoramento implements CommandLineRunner {
             System.out.println(historico.size() + " medição(ões).");
         } catch (FonteIndisponivelException e) {
             System.out.println("Não foi possível consultar: " + e.getMessage());
+        }
+    }
+
+    private void exportarMedicoesEmCsv() {
+        try {
+            Sensor sensor = escolherSensor();
+            List<Medicao> historico = servico.buscarHistoricoPorSensor(sensor.getCodigo());
+            Path arquivo = exportadorCsv.exportarHistorico(sensor.getCodigo(), historico);
+            System.out.println(historico.size() + " medição(ões) exportada(s) para " + arquivo.toAbsolutePath());
+        } catch (FonteIndisponivelException e) {
+            System.out.println("Não foi possível consultar: " + e.getMessage());
+        } catch (DadosInvalidosException e) {
+            System.out.println("Nada exportado: " + e.getMessage() + ". Use a opção 1 antes.");
+        } catch (IOException e) {
+            System.out.println("Não foi possível gravar o arquivo CSV: " + e.getMessage());
         }
     }
 
@@ -162,12 +214,14 @@ public class SistemaMonitoramento implements CommandLineRunner {
         System.out.println("1 - Alterar população estimada");
         System.out.println("2 - Alterar domicílios em área de risco");
         System.out.println("3 - Alterar limiar de um tipo de sensor (exige código de acesso)");
+        System.out.println("4 - Restaurar todos os limiares padrão (exige código de acesso)");
         int opcao = lerInteiro("Opção: ");
         try {
             switch (opcao) {
                 case 1 -> dados.setPopulacaoEstimada(lerInteiro("Nova população estimada: "));
                 case 2 -> dados.setDomiciliosEmAreaDeRisco(lerInteiro("Novos domicílios em área de risco: "));
                 case 3 -> alterarLimiar(dados);
+                case 4 -> servico.restaurarLimiaresPadrao(dados, lerTexto("Código de acesso: "));
                 default -> {
                     System.out.println("Opção inválida.");
                     return;
@@ -198,21 +252,15 @@ public class SistemaMonitoramento implements CommandLineRunner {
 
     // ------------------------------------------------------------------ 5
     private void statusCompleto() {
-        System.out.println("\n--- STATUS COMPLETO ---");
-        System.out.println("Território: " + catalogo.getDadosTerritorio());
-        System.out.println("\nPontos monitorados:");
-        catalogo.getPontos().forEach(p -> {
-            p.verificarStatus();
-            System.out.println("  " + p);
-            p.getSensores().forEach(s -> System.out.println("     - " + s));
-        });
-        System.out.println("\nLimiares em uso:");
-        for (Map.Entry<TipoSensor, Limiar> e : servico.getConfiguracao().getLimiares().entrySet()) {
-            System.out.printf("  %-18s %s (%s)%n", e.getKey().getDescricao(), e.getValue(), e.getKey().getUnidade());
-        }
-        System.out.println("\nBanco: " + servico.contarMedicoes() + " medição(ões) e "
-                + servico.contarAlertas() + " alerta(s) gravados.");
-        // TODO (equipe): montar este relatório com um RelatorioBuilder (padrão Builder) se quiserem o 3º padrão.
+        catalogo.getPontos().forEach(PontoMonitoramento::verificarStatus);
+        String relatorio = new RelatorioBuilder("STATUS COMPLETO")
+                .comTerritorio(catalogo.getDadosTerritorio())
+                .comPontos(catalogo.getPontos())
+                .comLimiares(servico.getConfiguracao().getLimiares())
+                .comTotaisDoBanco(servico.contarMedicoes(), servico.contarAlertas())
+                .comUltimosAlertas(servico.listarAlertas(), 3)
+                .construir();
+        System.out.println("\n" + relatorio);
     }
 
     // ------------------------------------------------------------------ leitura do teclado

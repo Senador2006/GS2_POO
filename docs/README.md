@@ -15,8 +15,9 @@ Esta pasta é para a equipe estudar e se organizar. O `README.md` da raiz é o q
 |---|---|---|
 | Recorte | 🌊 **Clima local**: chuva intensa e risco de alagamento | É o exemplo mais usado no enunciado (chuva negativa, INMET) e tem 3 sensores naturais |
 | Persistência | **Spring Boot 4.1.1 + Spring Data JPA** | Mesma stack do CS3_POO, que a equipe já conhece |
-| Banco | **H2 em arquivo** (`./data/territorio.mv.db`) | Roda na correção sem instalar nada e, ao contrário do H2 em memória, **mantém os dados ao reiniciar** |
-| Padrões criacionais | **Factory** (`FabricaPrevisao`) + **Singleton** (`ConfiguracaoSistema`) | O enunciado pede pelo menos 1; os dois resolvem problemas reais do código (ver arquitetura) |
+| Banco | **H2 em arquivo** (`./data/territorio.mv.db`) | Roda na correção sem instalar nada e, ao contrário do H2 em memória, **mantém os dados ao reiniciar** (medições, alertas e limiares alterados) |
+| Padrões criacionais | **Factory** (`FabricaPrevisao`) + **Singleton** (`ConfiguracaoSistema`) + **Builder** (`RelatorioBuilder`) | O enunciado pede pelo menos 1; os três resolvem problemas reais do código (ver arquitetura §5) |
+| Bônus | **Exportação CSV** do histórico de um sensor (menu 3 → 3) | O mais simples dos três bônus e útil para levar os dados a uma planilha |
 | Java | 17 no `pom.xml` | Compatível com qualquer JDK 17+ dos integrantes (foi testado com o JDK 25) |
 
 > ⚠️ Lembrete do enunciado: na correção **qualquer integrante pode ser chamado para explicar qualquer trecho**.
